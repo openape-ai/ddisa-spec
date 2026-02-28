@@ -1,6 +1,33 @@
 # 05 — Security Considerations
 
-## Threat Model
+## Mitigation of Attack Vectors
+
+| Attack | Description | Mitigation | Protocol Mechanism |
+|--------|-------------|------------|--------------------|
+| **Redirect URI Injection** | Attacker starts auth flow with malicious `redirect_uri` to steal the authorization code | Code is useless without `code_verifier` | PKCE (REQUIRED) |
+| **Authorization Code Interception** | Attacker intercepts the code during redirect | Code alone cannot be exchanged for an assertion | PKCE (REQUIRED) |
+| **DNS Spoofing** | Attacker poisons DNS to redirect IdP discovery | Assertion signature can't be forged; issuer mismatch detected | JWT signature + `iss` validation |
+| **IdP Impersonation** | Rogue IdP at attacker-controlled URL | Requires domain compromise (DNS control); IdP pinning as defense-in-depth | HTTPS + DNSSEC (RECOMMENDED) |
+| **Token Replay** | Captured assertion reused by attacker | Short-lived (max 300s), bound to specific session | `nonce` + `exp` + `jti` |
+| **CSRF** | Attacker triggers auth flow in victim's browser | State parameter links request to response | `state` parameter (REQUIRED) |
+| **Phishing** | Attacker tricks user into entering credentials on fake site | Passkeys are origin-bound — won't activate on wrong domain | WebAuthn (REQUIRED for humans) |
+| **Credential Stuffing** | Reuse of leaked passwords from other services | No passwords in DDISA | Passkeys only |
+| **Agent Key Theft** | Attacker steals agent's private key | Key revocation; scoped keys per agent instance | Ed25519 + IdP key management |
+| **Man-in-the-Middle** | Attacker intercepts SP ↔ IdP communication | All endpoints MUST use HTTPS | TLS (REQUIRED) |
+
+### Why PKCE is Critical
+
+PKCE (Proof Key for Code Exchange) is the primary defense against authorization code attacks. The flow:
+
+1. SP generates a random `code_verifier` and derives `code_challenge = sha256(code_verifier)`.
+2. SP sends `code_challenge` in the authorization request.
+3. IdP binds the authorization code to the `code_challenge`.
+4. SP sends `code_verifier` in the token exchange.
+5. IdP verifies: `sha256(code_verifier) == stored code_challenge`.
+
+An attacker who intercepts or steals the authorization code cannot exchange it — they don't have the `code_verifier`, which never leaves the SP.
+
+## Threat Model (Detailed)
 
 ### DNS Spoofing and Hijacking
 
@@ -10,8 +37,8 @@
 
 - **DNSSEC.** Domain operators SHOULD sign their zones with DNSSEC. SPs SHOULD validate DNSSEC signatures when available.
 - **HTTPS-only IdP URLs.** The `idp` field MUST use `https`. SPs MUST reject `http` URLs.
-- **Issuer validation.** SPs MUST verify that the `iss` claim in the JWT matches the `idp` URL discovered via DNS.
-- **JWT signature verification.** Even if DNS is compromised, the SP validates the JWT signature against the IdP's published keys. A spoofed DNS record pointing to a malicious IdP would require the attacker to also possess valid signing keys.
+- **Issuer validation.** SPs MUST verify that the `iss` claim in the assertion matches the `idp` URL discovered via DNS.
+- **JWT signature verification.** Even if DNS is compromised, the SP validates the assertion signature against the IdP's published keys. A spoofed DNS record pointing to a malicious IdP would require the attacker to also possess valid signing keys.
 
 **Recommendation:** DNSSEC is RECOMMENDED for all domains publishing DDISA records. While DDISA is functional without DNSSEC, it significantly raises the bar for DNS-based attacks.
 
@@ -26,13 +53,13 @@
 
 ### Token Replay
 
-**Threat:** A captured JWT is reused by an attacker.
+**Threat:** A captured assertion is reused by an attacker.
 
 **Mitigations:**
 
-- Short token lifetimes (5–15 minutes).
-- The `nonce` claim binds the token to a specific authentication session.
-- SPs SHOULD track used nonces within the token's validity window.
+- Maximum assertion lifetime of 300 seconds.
+- The `nonce` claim binds the assertion to a specific authentication session.
+- The `jti` claim provides a unique identifier; SPs SHOULD track used `jti` values within the assertion's validity window.
 
 ## Passkeys over Passwords
 
@@ -56,7 +83,7 @@ Agent authentication uses Ed25519 key pairs. Secure key management is critical:
 - **Key rotation.** IdPs MUST support multiple active keys per identity to enable rotation without downtime.
 - **Key revocation.** IdPs MUST provide a mechanism to revoke individual agent keys immediately.
 - **Scoping.** Organizations SHOULD issue distinct key pairs per agent instance. Sharing private keys across agents is NOT RECOMMENDED.
-- **No key in token.** Agent public keys are NOT included in the JWT. The JWT only attests the authentication result.
+- **No key in token.** Agent public keys are NOT included in the assertion. The assertion only attests the authentication result.
 
 ## Email as Public Information
 

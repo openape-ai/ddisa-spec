@@ -11,7 +11,6 @@ DDISA authentication combines DNS-based IdP discovery with an OAuth 2.0-inspired
 
 - **Assertion** — A signed JWT issued by the IdP upon successful authentication. Not an OIDC ID Token.
 - **SP ID** — The service provider's identifier (analogous to OAuth `client_id`).
-- **SP Manifest** — A JSON document served at `/.well-known/sp-manifest.json` describing the SP's identity and redirect URIs.
 
 ## Flow: SP → DNS → IdP → Assertion
 
@@ -132,4 +131,3 @@ Agent public keys MUST be pre-registered with the IdP. The mechanism for key reg
 | Endpoint | Served by | Description |
 |----------|-----------|-------------|
 | `/.well-known/jwks.json` | IdP | JSON Web Key Set for assertion signature verification |
-| `/.well-known/sp-manifest.json` | SP | SP identity, redirect URIs, and metadata |
